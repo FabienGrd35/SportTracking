@@ -9,7 +9,7 @@ import type { DayNutrition } from './types.ts';
 
 const COLS = {
   date: /^(date|jour|day)/i,
-  kcal: /(kcal|calor|énergie|energie)/i,
+  kcal: /(^k?cal\b|calor|énergie|energie)/i,
   protein: /prot/i,
   carbs: /(gluc|carb)/i,
   fat: /(lipid|^lip|fat|gras)/i,

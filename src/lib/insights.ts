@@ -192,19 +192,33 @@ export function analyze(
     }
   }
 
-  // --- Effet week-end -------------------------------------------------------
-  const recent = days.filter((d) => d.date > addDays(end, -28) && d.kcal > 0);
-  const isWeekend = (d: ISODate) => [0, 5, 6].includes(parseISODate(d).getDay());
-  const we = recent.filter((d) => isWeekend(d.date));
-  const wd = recent.filter((d) => !isWeekend(d.date));
-  if (we.length >= 3 && wd.length >= 6) {
-    const a = we.reduce((s, d) => s + d.kcal, 0) / we.length;
-    const b = wd.reduce((s, d) => s + d.kcal, 0) / wd.length;
-    if (a > b * 1.2) {
+  // --- Jour de la semaine qui dérape ----------------------------------------
+  // Sur 8 semaines : un jour dont la moyenne dépasse de > 15 % celle des autres jours.
+  const DAY_NAMES = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+  const recent = days.filter((d) => d.date > addDays(end, -56) && d.date <= end && d.kcal > 0);
+  if (recent.length >= 28) {
+    const byDow = new Map<number, number[]>();
+    for (const d of recent) {
+      const k = parseISODate(d.date).getDay();
+      byDow.set(k, [...(byDow.get(k) ?? []), d.kcal]);
+    }
+    const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+    let worst: { dow: number; avg: number; others: number } | null = null;
+    for (const [dow, xs] of byDow) {
+      if (xs.length < 4) continue;
+      const others = recent.filter((d) => parseISODate(d.date).getDay() !== dow).map((d) => d.kcal);
+      const avg = mean(xs);
+      const o = mean(others);
+      if (avg > o * 1.15 && (!worst || avg / o > worst.avg / worst.others)) worst = { dow, avg, others: o };
+    }
+    if (worst) {
+      const extraPerWeek = worst.avg - worst.others;
       insights.push({
-        id: 'weekend', level: 'warn', title: `Effet week-end : +${r0(((a - b) / b) * 100)} % de calories ven.–dim.`,
-        body: `Tu manges ${fmtKcal(a)} en moyenne le week-end contre ${fmtKcal(b)} en semaine. ` +
-          `Sur 3 jours cela peut effacer une bonne partie du déficit de la semaine : c'est souvent la vraie raison d'un plateau.`,
+        id: 'weekday', level: 'warn',
+        title: `Le ${DAY_NAMES[worst.dow]} : +${r0(((worst.avg - worst.others) / worst.others) * 100)} % de calories`,
+        body: `Sur 8 semaines, tu manges ${fmtKcal(worst.avg)} en moyenne le ${DAY_NAMES[worst.dow]} contre ${fmtKcal(worst.others)} les autres jours. ` +
+          `Cela fait ~${fmtKcal(extraPerWeek)} de plus chaque semaine, soit ~${r1((extraPerWeek * 52) / 7700)} kg sur un an si rien ne compense. ` +
+          `Ce n'est pas un problème en soi si c'est prévu dans ta moyenne hebdo, mais c'est souvent l'explication d'un plateau.`,
       });
     }
   }

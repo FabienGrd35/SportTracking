@@ -127,13 +127,13 @@ test('analyse : sèche saine + force stable → messages positifs', () => {
 test('analyse : perte rapide + force en baisse + effet week-end → alertes', () => {
   const ws = [END, addDays(END, -7), addDays(END, -14), addDays(END, -35), addDays(END, -42), addDays(END, -49)]
     .map((d) => workout(d, d >= addDays(END, -27) ? 92 : 100, d >= addDays(END, -27) ? 10 : 18));
-  const a = analyze(profile, weights(35, 85, -0.2), foods(35, 1600, 100, 2600), ws, END);
+  const a = analyze(profile, weights(56, 85, -0.2), foods(56, 1600, 100, 2600), ws, END);
   const ids = Object.fromEntries(a.insights.map((i) => [i.id, i.level]));
   assert.equal(ids.rate, 'warn');
   assert.equal(ids.protein, 'warn');
   assert.equal(ids.strength, 'warn');
   assert.equal(ids.volume, 'warn');
-  assert.equal(ids.weekend, 'warn');
+  assert.equal(ids.weekday, 'warn');
   assert.equal(a.insights[0].level, 'warn');
 });
 
@@ -219,4 +219,20 @@ test('Health Connect : une pesée par jour (la plus basse) + % de gras', () => {
     { date: '2026-11-05', weightKg: 82.4, bodyFatPct: 18.3, source: 'health' },
     { date: '2026-11-06', weightKg: 82.15, bodyFatPct: 18.1, source: 'health' },
   ]);
+});
+
+test('feuille au format réel : en-têtes abrégés Cal/Prot/Gluc/Lip, espace fine, jours vides', () => {
+  const csv = 'Date,Cal,Prot,Gluc,Lip\n02/10/2025,,,,\n03/10/2025,"2 104",150,210,70\n14/10/2025,"1 950",140,190,65\n';
+  const r = parseNutritionSheet(csv);
+  assert.deepEqual(r.columns, ['Date', 'Cal', 'Prot', 'Gluc', 'Lip']);
+  assert.deepEqual(r.days, [
+    { date: '2025-10-03', kcal: 2104, proteinG: 150, carbsG: 210, fatG: 70 },
+    { date: '2025-10-14', kcal: 1950, proteinG: 140, carbsG: 190, fatG: 65 },
+  ]);
+});
+
+test('jour qui dérape : le samedi seul est détecté', () => {
+  const f = foods(56, 2450).map((x) => (new Date(x.date + 'T12:00:00').getDay() === 6 ? { ...x, kcal: 2950 } : x));
+  const a = analyze(profile, [], f, [], END);
+  assert.match(a.insights.find((i) => i.id === 'weekday')!.title, /samedi/);
 });
