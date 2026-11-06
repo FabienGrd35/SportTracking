@@ -1,0 +1,153 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { addDays, weekStart } from '../src/lib/dates.ts';
+import { weightTrend, weeklyRateKg } from '../src/lib/trend.ts';
+import { adaptiveTdee, aggregateDays, bmr, macroTargets } from '../src/lib/energy.ts';
+import { parseRenphoCsv } from '../src/lib/renphoCsv.ts';
+import { epley, normalizeWorkout } from '../src/lib/hevy/normalize.ts';
+import { HevyClient } from '../src/lib/hevy/client.ts';
+import { analyze } from '../src/lib/insights.ts';
+import { END, foods, profile, weights, workout } from './helpers.ts';
+
+test('dates', () => {
+  assert.equal(addDays('2026-02-28', 1), '2026-03-01');
+  assert.equal(weekStart('2026-11-08'), '2026-11-02'); // dimanche → lundi
+});
+
+test('la tendance lisse le bruit et la pente est retrouvée', () => {
+  const t = weightTrend(weights(28, 85, -0.07));
+  assert.equal(t.length, 28);
+  const rate = weeklyRateKg(t)!;
+  assert.ok(Math.abs(rate - -0.49) < 0.1, `rate=${rate}`);
+});
+
+test('pas de tendance avec trop peu de pesées', () => {
+  assert.equal(weeklyRateKg(weightTrend(weights(4, 80, 0))), null);
+});
+
+test('BMR Mifflin-St Jeor', () => {
+  // 10*80 + 6.25*180 - 5*36 + 5 = 1750
+  assert.equal(bmr(profile, 80, new Date('2026-06-01')), 1750);
+});
+
+test('dépense adaptative : 2200 kcal et −0,5 kg/sem → ~2750 kcal', () => {
+  const r = adaptiveTdee(aggregateDays(foods(28, 2200)), weights(28, 85, -0.5 / 7), END)!;
+  assert.ok(Math.abs(r.tdee - 2750) < 60, `tdee=${r.tdee}`);
+});
+
+test('dépense adaptative refusée si saisie incomplète', () => {
+  assert.equal(adaptiveTdee(aggregateDays(foods(10, 2200)), weights(28, 85, 0), END), null);
+});
+
+test('objectifs macros cohérents', () => {
+  const t = macroTargets(profile, 80, 2700);
+  assert.equal(t.kcal, 2700 - Math.round((0.005 * 80 * 7700) / 7)); // −0,5 %/sem
+  assert.equal(t.proteinG, 160);
+  assert.ok(Math.abs(t.proteinG * 4 + t.carbsG * 4 + t.fatG * 9 - t.kcal) < 10);
+});
+
+test('CSV Renpho anglais (virgule, MM/JJ)', () => {
+  const csv = [
+    'Time of Measurement,Weight(kg),BMI,Body Fat(%),Fat-free Body Weight(kg),Muscle Mass(kg)',
+    '"10/25/2026, 7:12:03 AM",82.4kg,24.1,18.2%,67.4kg,63.1kg',
+    '"10/24/2026, 7:05:44 AM",82.9kg,24.2,18.4%,67.6kg,63.2kg',
+  ].join('\n');
+  const r = parseRenphoCsv(csv);
+  assert.equal(r.entries.length, 2);
+  assert.deepEqual(r.entries[0], { date: '2026-10-25', weightKg: 82.4, bodyFatPct: 18.2, muscleMassKg: 63.1, source: 'renpho' });
+});
+
+test('CSV Renpho français (point-virgule, décimales à virgule, JJ/MM, lb)', () => {
+  const csv = '﻿Date;Heure;Poids(lb);Graisse corporelle(%)\n03/11/2026;07:00;180,5;20,1\n13/10/2026;07:00;181;20,3\nfoo;bar;;\n';
+  const r = parseRenphoCsv(csv);
+  assert.equal(r.unit, 'lb');
+  assert.equal(r.skipped, 1);
+  assert.equal(r.entries[0].date, '2026-11-03');
+  assert.equal(r.entries[0].weightKg, 81.87);
+});
+
+test('CSV sans colonne poids → erreur claire', () => {
+  assert.throws(() => parseRenphoCsv('a,b\n1,2'), /introuvables/);
+});
+
+test('normalisation Hevy : échauffements exclus, e1RM Epley', () => {
+  assert.equal(epley(100, 1), 100);
+  assert.ok(Math.abs(epley(100, 5) - 116.67) < 0.01);
+  const w = normalizeWorkout({
+    id: 'w1', title: 'Push', start_time: '2026-10-30T18:00:00Z', end_time: '2026-10-30T19:05:00Z',
+    updated_at: '', created_at: '',
+    exercises: [{
+      index: 0, title: 'Bench', exercise_template_id: 'b',
+      sets: [
+        { index: 0, type: 'warmup', weight_kg: 60, reps: 10, distance_meters: null, duration_seconds: null, rpe: null },
+        { index: 1, type: 'normal', weight_kg: 100, reps: 5, distance_meters: null, duration_seconds: null, rpe: 8 },
+        { index: 2, type: 'normal', weight_kg: 100, reps: 4, distance_meters: null, duration_seconds: null, rpe: 9 },
+      ],
+    }],
+  });
+  assert.equal(w.durationMin, 65);
+  assert.equal(w.workingSets, 2);
+  assert.equal(w.volumeKg, 900);
+});
+
+test('client Hevy : pagination, header api-key, events', async () => {
+  const calls: string[] = [];
+  const fake = (async (url: string, init: RequestInit) => {
+    calls.push(url);
+    assert.equal((init.headers as Record<string, string>)['api-key'], 'KEY');
+    const page = Number(new URL(url).searchParams.get('page'));
+    const body = url.includes('/events')
+      ? { page, page_count: 1, events: [{ type: 'deleted', id: 'x', deleted_at: '' }] }
+      : { page, page_count: 2, workouts: [{ id: `w${page}` }] };
+    return new Response(JSON.stringify(body), { status: 200 });
+  }) as typeof fetch;
+  const c = new HevyClient('KEY', fake);
+  assert.deepEqual((await c.allWorkouts()).map((w) => w.id), ['w1', 'w2']);
+  assert.deepEqual((await c.changesSince('2026-01-01T00:00:00Z')).deletedIds, ['x']);
+  assert.ok(calls[0].startsWith('https://api.hevyapp.com/v1/workouts?page=1&pageSize=10'));
+});
+
+test('client Hevy : 401 → message explicite', async () => {
+  const c = new HevyClient('bad', (async () => new Response('', { status: 401 })) as typeof fetch);
+  await assert.rejects(c.allWorkouts(), /Hevy Pro/);
+});
+
+test('analyse : sèche saine + force stable → messages positifs', () => {
+  const ws = [END, addDays(END, -7), addDays(END, -14), addDays(END, -21), addDays(END, -35), addDays(END, -42)]
+    .map((d) => workout(d, 100));
+  const a = analyze(profile, weights(35, 85, -0.06), foods(35, 2200, 170), ws, END);
+  const ids = Object.fromEntries(a.insights.map((i) => [i.id, i.level]));
+  assert.equal(a.tdeeSource, 'measured');
+  assert.equal(ids.rate, 'good');
+  assert.equal(ids.protein, 'good');
+  assert.equal(ids.strength, 'good');
+  assert.ok(a.targets && a.targets.kcal < a.tdee!);
+});
+
+test('analyse : perte rapide + force en baisse + effet week-end → alertes', () => {
+  const ws = [END, addDays(END, -7), addDays(END, -14), addDays(END, -35), addDays(END, -42), addDays(END, -49)]
+    .map((d) => workout(d, d >= addDays(END, -27) ? 92 : 100, d >= addDays(END, -27) ? 10 : 18));
+  const a = analyze(profile, weights(35, 85, -0.2), foods(35, 1600, 100, 2600), ws, END);
+  const ids = Object.fromEntries(a.insights.map((i) => [i.id, i.level]));
+  assert.equal(ids.rate, 'warn');
+  assert.equal(ids.protein, 'warn');
+  assert.equal(ids.strength, 'warn');
+  assert.equal(ids.volume, 'warn');
+  assert.equal(ids.weekend, 'warn');
+  assert.equal(a.insights[0].level, 'warn');
+});
+
+test('analyse sans données : pas de crash', () => {
+  const a = analyze(profile, [], [], [], END);
+  assert.equal(a.tdee, null);
+  assert.deepEqual(a.insights, []);
+});
+
+test('pesée anormale détectée, mais pas en perte régulière', () => {
+  const steady = analyze(profile, weights(35, 85, -0.2), [], [], END);
+  assert.ok(!steady.insights.some((i) => i.id === 'noise'));
+  const spike = weights(35, 85, -0.05);
+  spike[spike.length - 1].weightKg += 1.5;
+  const a = analyze(profile, spike, [], [], END);
+  assert.match(a.insights.find((i) => i.id === 'noise')!.title, /Pesée haute/);
+});
