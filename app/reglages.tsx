@@ -3,6 +3,7 @@ import { Alert, Linking, View } from 'react-native';
 import { Button, Card, Field, Muted, num, Row, Screen, Segmented, Title } from '../src/components/ui.tsx';
 import type { ActivityLevel, Goal, Profile, Sex } from '../src/lib/types.ts';
 import { getHevyKey, setHevyKey } from '../src/state/hevySync.ts';
+import { fetchNutritionSheet } from '../src/state/sheetSync.ts';
 import { useStore } from '../src/state/store.tsx';
 
 export default function Reglages() {
@@ -22,6 +23,30 @@ export default function Reglages() {
     setBirth(String(p.birthYear));
     setRate(String(p.targetRatePctPerWeek).replace('.', ','));
   }, [p.heightCm, p.birthYear, p.targetRatePctPerWeek]);
+
+  const [sheet, setSheet] = useState(state.sheetUrl ?? '');
+  const [sheetBusy, setSheetBusy] = useState(false);
+  const syncSheet = async () => {
+    const url = sheet.trim();
+    if (!url) {
+      dispatch({ type: 'setSheetUrl', url: null });
+      return Alert.alert('Google Sheets', 'Lien supprimé.');
+    }
+    setSheetBusy(true);
+    try {
+      const r = await fetchNutritionSheet(url);
+      dispatch({ type: 'setSheetUrl', url });
+      dispatch({ type: 'sheetSync', days: r.days, at: new Date().toISOString() });
+      Alert.alert(
+        'Google Sheets',
+        `${r.days.length} jour(s) importé(s)${r.skipped ? `, ${r.skipped} ligne(s) ignorée(s)` : ''}.\nColonnes reconnues : ${r.columns.join(', ')}`,
+      );
+    } catch (e) {
+      Alert.alert('Google Sheets', e instanceof Error ? e.message : String(e));
+    } finally {
+      setSheetBusy(false);
+    }
+  };
 
   const update = (patch: Partial<Profile>) => dispatch({ type: 'setProfile', profile: { ...p, ...patch } });
 
@@ -82,6 +107,18 @@ export default function Reglages() {
             ]}
           />
           <Button label="Enregistrer" onPress={saveNumbers} />
+        </View>
+      </Card>
+
+      <Card title="Nutrition — Google Sheets">
+        <View style={{ gap: 10 }}>
+          <Muted>
+            Colle le lien de ta feuille. Elle doit contenir des colonnes Date, Calories, Protéines, Glucides, Lipides
+            (une ligne par jour ou par repas). Partage : « Tous les utilisateurs disposant du lien » en lecture.
+            {state.sheetLastSync ? `\nDernière synchro : ${new Date(state.sheetLastSync).toLocaleString('fr-FR')}` : ''}
+          </Muted>
+          <Field label="Lien Google Sheets" value={sheet} onChangeText={setSheet} autoCapitalize="none" autoCorrect={false} placeholder="https://docs.google.com/spreadsheets/d/…" />
+          <Button label={sheetBusy ? 'Import…' : 'Enregistrer et synchroniser'} disabled={sheetBusy} onPress={syncSheet} />
         </View>
       </Card>
 

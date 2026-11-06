@@ -28,9 +28,15 @@ export function formulaTdee(profile: Profile, weightKg: number, ref = new Date()
   return bmr(profile, weightKg, ref) * ACTIVITY_FACTOR[profile.activity];
 }
 
+/**
+ * Totaux journaliers. Si une journée est fournie par Google Sheets, c'est elle qui fait foi :
+ * les saisies manuelles du même jour sont ignorées pour éviter de compter deux fois.
+ */
 export function aggregateDays(foods: FoodEntry[]): DayNutrition[] {
+  const sheetDays = new Set(foods.filter((f) => f.source === 'sheet').map((f) => f.date));
   const map = new Map<ISODate, DayNutrition>();
   for (const f of foods) {
+    if (f.source !== 'sheet' && sheetDays.has(f.date)) continue;
     const d = map.get(f.date) ?? { date: f.date, kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 };
     d.kcal += f.kcal;
     d.proteinG += f.proteinG;

@@ -151,3 +151,72 @@ test('pesée anormale détectée, mais pas en perte régulière', () => {
   const a = analyze(profile, spike, [], [], END);
   assert.match(a.insights.find((i) => i.id === 'noise')!.title, /Pesée haute/);
 });
+
+import { parseNutritionSheet, toCsvUrl } from '../src/lib/nutritionSheet.ts';
+import { mapHealthWeights } from '../src/lib/healthConnect.ts';
+
+test('URL Google Sheets → export CSV', () => {
+  assert.equal(
+    toCsvUrl('https://docs.google.com/spreadsheets/d/1AbC-d_9/edit?usp=sharing#gid=42'),
+    'https://docs.google.com/spreadsheets/d/1AbC-d_9/export?format=csv&gid=42',
+  );
+  assert.equal(
+    toCsvUrl('https://docs.google.com/spreadsheets/d/1AbC/edit'),
+    'https://docs.google.com/spreadsheets/d/1AbC/export?format=csv',
+  );
+  assert.equal(
+    toCsvUrl('https://docs.google.com/spreadsheets/d/e/2PACX-xyz/pubhtml'),
+    'https://docs.google.com/spreadsheets/d/e/2PACX-xyz/pub?output=csv',
+  );
+  assert.equal(
+    toCsvUrl('https://docs.google.com/spreadsheets/d/e/2PACX-xyz/pub?gid=0&single=true'),
+    'https://docs.google.com/spreadsheets/d/e/2PACX-xyz/pub?gid=0&single=true&output=csv',
+  );
+  assert.equal(toCsvUrl('https://script.google.com/macros/s/abc/exec'), 'https://script.google.com/macros/s/abc/exec');
+});
+
+test('feuille nutrition : titre au-dessus, une ligne par repas, FR', () => {
+  const csv = [
+    'Suivi nutrition,,,,,',
+    'Date,Repas,Calories (kcal),Protéines (g),Glucides (g),Lipides (g)',
+    '05/11/2026,Petit-déj,"520","35","60","14"',
+    '05/11/2026,Déjeuner,"780,5","50","85","22"',
+    '06/11/2026,Total,"2 150","170","230","60"',
+    'Moyenne,,"1800","120","200","50"',
+    ',,,,,',
+  ].join('\n');
+  const r = parseNutritionSheet(csv);
+  assert.deepEqual(r.days, [
+    { date: '2026-11-05', kcal: 1300.5, proteinG: 85, carbsG: 145, fatG: 36 },
+    { date: '2026-11-06', kcal: 2150, proteinG: 170, carbsG: 230, fatG: 60 },
+  ]);
+  assert.equal(r.skipped, 1);
+});
+
+test('feuille non partagée → message explicite', () => {
+  assert.throws(() => parseNutritionSheet('<!DOCTYPE html><html>login</html>'), /partagée/);
+});
+
+test('journée Google Sheets prioritaire sur la saisie manuelle', () => {
+  const days = aggregateDays([
+    { id: 'a', date: '2026-11-05', label: 'x', kcal: 500, proteinG: 0, carbsG: 0, fatG: 0, source: 'manual' },
+    { id: 'b', date: '2026-11-05', label: 'GS', kcal: 2000, proteinG: 0, carbsG: 0, fatG: 0, source: 'sheet' },
+    { id: 'c', date: '2026-11-06', label: 'x', kcal: 700, proteinG: 0, carbsG: 0, fatG: 0 },
+  ]);
+  assert.deepEqual(days.map((d) => [d.date, d.kcal]), [['2026-11-05', 2000], ['2026-11-06', 700]]);
+});
+
+test('Health Connect : une pesée par jour (la plus basse) + % de gras', () => {
+  const r = mapHealthWeights(
+    [
+      { time: '2026-11-05T06:30:00Z', weight: { inKilograms: 82.4 } },
+      { time: '2026-11-05T19:00:00Z', weight: { inKilograms: 83.6 } },
+      { time: '2026-11-06T06:40:00Z', weight: { inKilograms: 82.15 } },
+    ],
+    [{ time: '2026-11-05T06:30:00Z', percentage: 18.3 }, { time: '2026-11-06T06:40:00Z', percentage: { value: 18.1 } }],
+  );
+  assert.deepEqual(r, [
+    { date: '2026-11-05', weightKg: 82.4, bodyFatPct: 18.3, source: 'health' },
+    { date: '2026-11-06', weightKg: 82.15, bodyFatPct: 18.1, source: 'health' },
+  ]);
+});

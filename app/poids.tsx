@@ -8,6 +8,7 @@ import { Button, Card, Field, fmt, Muted, num, Row, Screen, Segmented, Stat, Tit
 import { addDays, formatShort, today } from '../src/lib/dates.ts';
 import { parseRenphoCsv } from '../src/lib/renphoCsv.ts';
 import { weightTrend } from '../src/lib/trend.ts';
+import { connectHealth, healthConnectSupported, syncHealth } from '../src/state/healthConnect.ts';
 import { useStore } from '../src/state/store.tsx';
 import { useAnalysis } from '../src/state/useAnalysis.ts';
 
@@ -38,6 +39,25 @@ export default function Poids() {
       Alert.alert('Import Renpho', `${r.entries.length} mesures importées${r.skipped ? `, ${r.skipped} lignes ignorées` : ''}.`);
     } catch (e) {
       Alert.alert('Import impossible', e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const [busy, setBusy] = useState(false);
+  const syncHealthNow = async () => {
+    setBusy(true);
+    try {
+      if (!state.healthEnabled) {
+        if (!(await connectHealth())) return Alert.alert('Health Connect', "Autorisation de lecture du poids refusée.");
+        dispatch({ type: 'setHealthEnabled', enabled: true });
+      }
+      const r = await syncHealth(state.healthEnabled ? state.healthLastSync : null);
+      dispatch({ type: 'healthSync', ...r });
+      Alert.alert('Health Connect', r.entries.length ? `${r.entries.length} jour(s) de pesée mis à jour.` :
+        "Aucune pesée trouvée. Vérifie dans l'appli Renpho que la synchro Health Connect est activée.");
+    } catch (e) {
+      Alert.alert('Health Connect', e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -74,13 +94,30 @@ export default function Poids() {
         </Muted>
       </Card>
 
-      <Card title="Renpho">
+      {healthConnectSupported && (
+        <Card title="Renpho via Health Connect">
+          <View style={{ gap: 8 }}>
+            <Muted>
+              {state.healthLastSync
+                ? `Synchro automatique à l'ouverture. Dernière : ${new Date(state.healthLastSync).toLocaleString('fr-FR')}`
+                : "Dans l'appli Renpho, active la synchro vers Health Connect, puis connecte-la ici : tes pesées arriveront automatiquement."}
+            </Muted>
+            <Button
+              label={busy ? 'Synchronisation…' : state.healthEnabled ? 'Synchroniser maintenant' : 'Connecter Health Connect'}
+              disabled={busy}
+              onPress={syncHealthNow}
+            />
+          </View>
+        </Card>
+      )}
+
+      <Card title="Import CSV Renpho (secours)">
         <View style={{ gap: 8 }}>
           <Muted>
-            Renpho ne propose pas d'API publique. Dans l'appli Renpho : Moi → Paramètres → Exporter les données (CSV),
-            puis importe le fichier ici. Les mesures déjà présentes sont mises à jour, pas dupliquées.
+            Pour récupérer un historique plus ancien que ce qu'a reçu Health Connect : dans l'appli Renpho, exporte
+            les données en CSV puis importe le fichier ici. Les mesures déjà présentes sont mises à jour, pas dupliquées.
           </Muted>
-          <Button label="Importer un CSV Renpho" onPress={importCsv} />
+          <Button kind="secondary" label="Importer un CSV Renpho" onPress={importCsv} />
         </View>
       </Card>
 
@@ -107,7 +144,7 @@ export default function Poids() {
               <Text style={{ color: t.text }}>{formatShort(w.date)} {w.date.slice(0, 4)}</Text>
               <Text style={{ color: t.text, fontWeight: '600' }}>
                 {fmt(w.weightKg, 1)} kg{w.bodyFatPct ? ` · ${fmt(w.bodyFatPct, 1)} %` : ''}
-                <Text style={{ color: t.muted, fontWeight: '400' }}> {w.source === 'renpho' ? 'Renpho' : 'manuel'}</Text>
+                <Text style={{ color: t.muted, fontWeight: '400' }}> {w.source === 'renpho' ? 'Renpho CSV' : w.source === 'health' ? 'Health Connect' : 'manuel'}</Text>
               </Text>
             </Pressable>
           ))}

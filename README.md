@@ -24,23 +24,37 @@ Appli mobile (iOS / Android, Expo + React Native) qui croise **musculation (Hevy
   (force stable en sèche = muscle préservé ; force en baisse + perte rapide = alerte).
 - **% de gras Renpho** : rappel des limites de l'impédancemétrie.
 
-## Connexions — ce qu'il faut savoir
+## Connexions
 
-- **Hevy** : API officielle (`https://api.hevyapp.com/v1`), **réservée aux abonnés Hevy Pro**. Clé à récupérer sur
-  hevy.com → Settings → Developer, à coller dans Réglages.
-- **Renpho** : **pas d'API publique**. Les API non officielles (rétro-ingénierie) cassent à chaque mise à jour de
-  l'appli Renpho et demandent ton mot de passe : écartées volontairement. L'appli importe l'**export CSV** de Renpho
-  (formats anglais/français, kg/lb, virgule/point-virgule gérés). Étape suivante possible : lire le poids via
-  **Apple Santé / Health Connect**, où Renpho se synchronise déjà (nécessite un build natif, cf. roadmap).
-- **Nutrition** : saisie dans l'appli (pas de base d'aliments pour l'instant).
+| Source | Comment | Automatique ? |
+| --- | --- | --- |
+| **Hevy** | API officielle (`api.hevyapp.com/v1`), **abonnement Hevy Pro requis**. Clé : hevy.com → Settings → Developer → Réglages de l'appli. | Oui, à chaque ouverture |
+| **Renpho** | Pas d'API publique. Renpho écrit dans **Health Connect** (Android) → l'appli lit poids et % de gras. Import CSV en secours pour l'historique ancien. | Oui (Health Connect) |
+| **Macros / calories** | Lecture de ta **feuille Google Sheets** (export CSV). Colonnes reconnues : Date, Calories, Protéines, Glucides, Lipides ; une ligne par jour ou par repas. Saisie manuelle possible en complément. | Oui, à chaque ouverture |
 
-## Lancer l'appli
+Synchro auto : à l'ouverture et au retour au premier plan, au plus toutes les 15 min (`src/state/useAutoSync.ts`).
+
+### Configuration côté téléphone
+
+1. **Renpho → Health Connect** : dans l'appli Renpho, activer la synchro Health Connect (Moi → Paramètres →
+   applis tierces), puis dans SportTracking : Poids → *Connecter Health Connect*.
+2. **Google Sheets** : Partager → « Tous les utilisateurs disposant du lien » (lecteur), coller le lien dans Réglages.
+   ⚠️ Toute personne qui a le lien peut lire la feuille. Pour plus de confidentialité : un script Apps Script
+   publié avec un jeton secret dans l'URL (l'appli accepte n'importe quelle URL qui renvoie du CSV).
+   Si une journée est dans la feuille, c'est elle qui fait foi : les saisies manuelles du même jour sont ignorées.
+
+## Lancer l'appli (Android)
+
+Health Connect est un module natif : l'appli **ne tourne pas dans Expo Go**, il faut un build.
 
 ```bash
 npm install
-npx expo install --fix   # aligne les versions sur le SDK Expo installé
-npx expo start           # puis scanner le QR code avec Expo Go
+npx expo install --fix          # aligne les versions sur le SDK Expo
+npm i -g eas-cli && eas login   # compte Expo gratuit
+npm run build:android           # APK installable directement sur le téléphone
 ```
+
+Pour développer : `eas build -p android --profile development`, installer l'APK, puis `npx expo start --dev-client`.
 
 Tests de la logique métier (Node ≥ 22.18, sans dépendance) :
 
@@ -62,7 +76,8 @@ Toutes les données restent sur le téléphone.
 
 ## Roadmap
 
-- [ ] Poids automatique via Apple Santé (HealthKit) / Health Connect (Renpho y écrit déjà)
+- [x] Poids automatique via Health Connect
+- [x] Macros depuis Google Sheets
 - [ ] Recherche d'aliments (Open Food Facts) + scan code-barres
 - [ ] Repas favoris / modèles
 - [ ] Export / sauvegarde des données

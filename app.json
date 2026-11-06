@@ -6,8 +6,31 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "plugins": ["expo-router", "expo-secure-store"],
-    "ios": { "supportsTablet": false, "bundleIdentifier": "eu.sporttracking.app" },
-    "android": { "package": "eu.sporttracking.app" }
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-health-connect",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26,
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35
+          }
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "eu.sporttracking.app"
+    },
+    "android": {
+      "package": "eu.sporttracking.app",
+      "permissions": [
+        "android.permission.health.READ_WEIGHT",
+        "android.permission.health.READ_BODY_FAT"
+      ]
+    }
   }
 }

@@ -21,6 +21,7 @@ export default function Nutrition() {
   const days = useMemo(() => aggregateDays(state.foods), [state.foods]);
   const day = days.find((d) => d.date === date);
   const entries = state.foods.filter((f) => f.date === date);
+  const fromSheet = entries.some((e) => e.source === 'sheet');
   const last14 = Array.from({ length: 14 }, (_, i) => addDays(today(), i - 13)).map((d) => ({
     label: formatShort(d).slice(0, 2),
     value: days.find((x) => x.date === d)?.kcal ?? 0,
@@ -36,13 +37,13 @@ export default function Nutrition() {
     if (kcal <= 0) return Alert.alert('Saisie incomplète', 'Indique au moins les calories ou les macros.');
     dispatch({
       type: 'addFood',
-      entry: { id: uid(), date, label: form.label.trim() || 'Repas', kcal, proteinG: p, carbsG: c, fatG: f },
+      entry: { id: uid(), date, label: form.label.trim() || 'Repas', kcal, proteinG: p, carbsG: c, fatG: f, source: 'manual' },
     });
     setForm({ label: '', kcal: '', p: '', c: '', f: '' });
   };
 
   const copyPreviousDay = () => {
-    const prev = state.foods.filter((x) => x.date === addDays(date, -1));
+    const prev = state.foods.filter((x) => x.date === addDays(date, -1) && x.source !== 'sheet');
     if (!prev.length) return Alert.alert('Rien à copier', 'La veille est vide.');
     prev.forEach((x) => dispatch({ type: 'addFood', entry: { ...x, id: uid(), date } }));
   };
@@ -62,6 +63,11 @@ export default function Nutrition() {
 
       <Card>
         <MacroBars kcal={day?.kcal ?? 0} proteinG={day?.proteinG ?? 0} carbsG={day?.carbsG ?? 0} fatG={day?.fatG ?? 0} targets={targets} />
+        {fromSheet ? (
+          <View style={{ marginTop: 10 }}>
+            <Muted>Journée importée de Google Sheets : c'est elle qui fait foi, les saisies manuelles de ce jour sont ignorées.</Muted>
+          </View>
+        ) : null}
         {day && day.kcal > 0 ? (
           <View style={{ marginTop: 10 }}>
             <Muted>
@@ -72,7 +78,7 @@ export default function Nutrition() {
         ) : null}
       </Card>
 
-      <Card title="Ajouter">
+      <Card title={state.sheetUrl ? 'Ajouter (hors Google Sheets)' : 'Ajouter'}>
         <View style={{ gap: 10 }}>
           <Field label="Repas / aliment" value={form.label} onChangeText={(v) => setForm({ ...form, label: v })} placeholder="Déjeuner" />
           <Row gap={8}>
@@ -97,6 +103,7 @@ export default function Nutrition() {
           {entries.map((e) => (
             <Pressable
               key={e.id}
+              disabled={e.source === 'sheet'}
               onLongPress={() =>
                 Alert.alert('Supprimer ?', e.label, [
                   { text: 'Annuler', style: 'cancel' },

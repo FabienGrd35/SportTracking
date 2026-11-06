@@ -6,7 +6,7 @@ export type WeightEntry = {
   weightKg: number;
   bodyFatPct?: number;
   muscleMassKg?: number;
-  source: 'renpho' | 'manual';
+  source: 'renpho' | 'health' | 'manual';
 };
 
 export type FoodEntry = {
@@ -17,6 +17,8 @@ export type FoodEntry = {
   proteinG: number;
   carbsG: number;
   fatG: number;
+  /** 'sheet' = importé depuis Google Sheets (remplacé à chaque synchro). */
+  source?: 'manual' | 'sheet';
 };
 
 export type ExerciseSummary = {

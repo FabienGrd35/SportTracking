@@ -4,6 +4,12 @@ import { Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useTheme } from '../src/components/theme.ts';
 import { StoreProvider } from '../src/state/store.tsx';
+import { useAutoSync } from '../src/state/useAutoSync.ts';
+
+function AutoSync() {
+  useAutoSync();
+  return null;
+}
 
 const icon = (glyph: string) => ({ color }: { color: string }) => <Text style={{ color, fontSize: 18 }}>{glyph}</Text>;
 
@@ -12,6 +18,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StoreProvider>
+        <AutoSync />
         <StatusBar style="auto" />
         <Tabs
           screenOptions={{

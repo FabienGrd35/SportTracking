@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react';
-import type { FoodEntry, Profile, WeightEntry, Workout } from '../lib/types.ts';
+import type { DayNutrition, FoodEntry, Profile, WeightEntry, Workout } from '../lib/types.ts';
 
 export type State = {
   profile: Profile;
@@ -8,6 +8,12 @@ export type State = {
   foods: FoodEntry[];
   workouts: Workout[];
   hevyLastSync: string | null;
+  /** Lien de la feuille Google Sheets contenant l'historique nutrition. */
+  sheetUrl: string | null;
+  sheetLastSync: string | null;
+  /** Health Connect (Android) activé par l'utilisateur. */
+  healthEnabled: boolean;
+  healthLastSync: string | null;
 };
 
 export const defaultProfile: Profile = {
@@ -19,7 +25,17 @@ export const defaultProfile: Profile = {
   targetRatePctPerWeek: 0.5,
 };
 
-const initial: State = { profile: defaultProfile, weights: [], foods: [], workouts: [], hevyLastSync: null };
+const initial: State = {
+  profile: defaultProfile,
+  weights: [],
+  foods: [],
+  workouts: [],
+  hevyLastSync: null,
+  sheetUrl: null,
+  sheetLastSync: null,
+  healthEnabled: false,
+  healthLastSync: null,
+};
 
 type Action =
   | { type: 'hydrate'; state: State }
@@ -29,6 +45,10 @@ type Action =
   | { type: 'addFood'; entry: FoodEntry }
   | { type: 'removeFood'; id: string }
   | { type: 'hevySync'; updated: Workout[]; deletedIds: string[]; at: string; full: boolean }
+  | { type: 'sheetSync'; days: DayNutrition[]; at: string }
+  | { type: 'setSheetUrl'; url: string | null }
+  | { type: 'healthSync'; entries: WeightEntry[]; at: string }
+  | { type: 'setHealthEnabled'; enabled: boolean }
   | { type: 'reset' };
 
 const wKey = (w: WeightEntry) => `${w.date}|${w.source}`;
@@ -62,6 +82,28 @@ function reducer(s: State, a: Action): State {
         hevyLastSync: a.at,
       };
     }
+    case 'sheetSync': {
+      // La feuille est la référence : on remplace intégralement les jours importés précédemment.
+      const sheet: FoodEntry[] = a.days.map((d) => ({
+        id: `sheet-${d.date}`,
+        date: d.date,
+        label: 'Google Sheets',
+        kcal: Math.round(d.kcal),
+        proteinG: Math.round(d.proteinG),
+        carbsG: Math.round(d.carbsG),
+        fatG: Math.round(d.fatG),
+        source: 'sheet',
+      }));
+      return { ...s, foods: [...s.foods.filter((f) => f.source !== 'sheet'), ...sheet], sheetLastSync: a.at };
+    }
+    case 'setSheetUrl':
+      return { ...s, sheetUrl: a.url, sheetLastSync: a.url ? s.sheetLastSync : null };
+    case 'healthSync': {
+      const next = reducer(s, { type: 'importWeights', entries: a.entries });
+      return { ...next, healthLastSync: a.at };
+    }
+    case 'setHealthEnabled':
+      return { ...s, healthEnabled: a.enabled };
     case 'reset':
       return initial;
   }
