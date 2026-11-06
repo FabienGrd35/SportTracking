@@ -3,6 +3,8 @@ import { Alert, Linking, View } from 'react-native';
 import { Button, Card, Field, Muted, num, Row, Screen, Segmented, Title } from '../src/components/ui.tsx';
 import type { ActivityLevel, Goal, Profile, Sex } from '../src/lib/types.ts';
 import { getHevyKey, setHevyKey } from '../src/state/hevySync.ts';
+import { getClaudeKey, setClaudeKey } from '../src/state/claude.ts';
+import { pickNutritionFile } from '../src/state/nutritionFile.ts';
 import { fetchNutritionSheet } from '../src/state/sheetSync.ts';
 import { useStore } from '../src/state/store.tsx';
 
@@ -45,6 +47,29 @@ export default function Reglages() {
       Alert.alert('Google Sheets', e instanceof Error ? e.message : String(e));
     } finally {
       setSheetBusy(false);
+    }
+  };
+
+  const [claudeKey, setClaudeKeyInput] = useState('');
+  const [hasClaude, setHasClaude] = useState(false);
+  useEffect(() => {
+    getClaudeKey().then((k) => setHasClaude(!!k));
+  }, []);
+  const saveClaude = async () => {
+    await setClaudeKey(claudeKey);
+    setHasClaude(!!claudeKey.trim());
+    setClaudeKeyInput('');
+    Alert.alert('Claude', claudeKey.trim() ? 'Clé enregistrée de façon sécurisée.' : 'Clé supprimée.');
+  };
+
+  const importFile = async () => {
+    try {
+      const r = await pickNutritionFile();
+      if (!r) return;
+      dispatch({ type: 'sheetSync', days: r.days, at: new Date().toISOString() });
+      Alert.alert('Import nutrition', `${r.days.length} jour(s) importé(s).\nColonnes reconnues : ${r.columns.join(', ')}`);
+    } catch (e) {
+      Alert.alert('Import impossible', e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -110,7 +135,30 @@ export default function Reglages() {
         </View>
       </Card>
 
-      <Card title="Nutrition — Google Sheets">
+      <Card title="Claude">
+        <View style={{ gap: 10 }}>
+          <Muted>
+            {hasClaude ? 'Clé API enregistrée ✓' : 'Aucune clé.'} Crée une clé sur console.anthropic.com → API Keys et
+            ajoute quelques dollars de crédit (Billing). Facturation à l'usage, indépendante de ton abonnement claude.ai.
+            Conseil : fixe une limite de dépense mensuelle dans la console.
+          </Muted>
+          <Field label="Clé API Claude" value={claudeKey} onChangeText={setClaudeKeyInput} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="sk-ant-…" />
+          <Button label={claudeKey.trim() || !hasClaude ? 'Enregistrer la clé' : 'Supprimer la clé'} onPress={saveClaude} />
+          <Button kind="secondary" label="Ouvrir console.anthropic.com" onPress={() => Linking.openURL('https://console.anthropic.com/settings/keys')} />
+        </View>
+      </Card>
+
+      <Card title="Nutrition — fichier Excel / CSV">
+        <View style={{ gap: 10 }}>
+          <Muted>
+            Importe ton historique depuis un fichier sur le téléphone (Excel .xlsx ou CSV), avec les colonnes Date, Cal,
+            Prot, Gluc, Lip. Remplace l'historique importé précédemment.
+          </Muted>
+          <Button label="Importer un fichier" onPress={importFile} />
+        </View>
+      </Card>
+
+      <Card title="Nutrition — Google Sheets (synchro auto)">
         <View style={{ gap: 10 }}>
           <Muted>
             Colle le lien de ta feuille. Elle doit contenir des colonnes Date, Calories, Protéines, Glucides, Lipides

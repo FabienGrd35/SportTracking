@@ -20,6 +20,12 @@
             "targetSdkVersion": 35
           }
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SportTracking lit tes captures d'écran Renpho pour en extraire tes pesées."
+        }
       ]
     ],
     "ios": {

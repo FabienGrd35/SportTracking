@@ -1,4 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import { extractWeightsFromImages } from '../src/state/claude.ts';
 import { File } from 'expo-file-system';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
@@ -61,6 +63,45 @@ export default function Poids() {
     }
   };
 
+  const importScreenshots = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+      base64: true,
+      quality: 0.7,
+    });
+    if (res.canceled) return;
+    const images = res.assets
+      .filter((a) => a.base64)
+      .map((a) => ({
+        base64: a.base64 as string,
+        mediaType: (a.mimeType === 'image/png' ? 'image/png' : a.mimeType === 'image/webp' ? 'image/webp' : 'image/jpeg') as
+          'image/png' | 'image/webp' | 'image/jpeg',
+      }));
+    setBusy(true);
+    try {
+      const r = await extractWeightsFromImages(images, today());
+      if (!r.entries.length) {
+        return Alert.alert('Captures Renpho', `Aucune pesée lisible.${r.notes ? `\n${r.notes}` : ''}`);
+      }
+      const list = r.entries.slice(-8).map((e) => `${formatShort(e.date)} : ${fmt(e.weightKg, 1)} kg`).join('\n');
+      Alert.alert(
+        'Vérifie avant d\'importer',
+        `${r.entries.length} pesée(s) lue(s) par Claude${r.rejected ? `, ${r.rejected} écartée(s)` : ''} :\n${list}${r.entries.length > 8 ? '\n…' : ''}` +
+          `${r.notes ? `\n\nRemarque : ${r.notes}` : ''}`,
+        [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Importer', onPress: () => dispatch({ type: 'importWeights', entries: r.entries }) },
+        ],
+      );
+    } catch (e) {
+      Alert.alert('Captures Renpho', e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const addManual = () => {
     const kg = num(manual);
     if (!kg || kg < 20 || kg > 400) return Alert.alert('Poids invalide');
@@ -110,6 +151,16 @@ export default function Poids() {
           </View>
         </Card>
       )}
+
+      <Card title="Captures d'écran Renpho (via Claude)">
+        <View style={{ gap: 8 }}>
+          <Muted>
+            Dans l'appli Renpho, ouvre l'historique des mesures (liste jour par jour) et fais des captures d'écran.
+            Claude lit les dates et les poids ; tu vérifies avant l'import. Les courbes sans chiffres ne sont pas exploitables.
+          </Muted>
+          <Button label={busy ? 'Lecture…' : 'Importer des captures'} disabled={busy} onPress={importScreenshots} />
+        </View>
+      </Card>
 
       <Card title="Import CSV Renpho (secours)">
         <View style={{ gap: 8 }}>

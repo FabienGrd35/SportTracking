@@ -29,6 +29,7 @@ export default function RootLayout() {
           }}
         >
           <Tabs.Screen name="index" options={{ title: 'Tendances', tabBarIcon: icon('📈') }} />
+          <Tabs.Screen name="coach" options={{ title: 'Coach', tabBarIcon: icon('💬') }} />
           <Tabs.Screen name="nutrition" options={{ title: 'Nutrition', tabBarIcon: icon('🍽') }} />
           <Tabs.Screen name="poids" options={{ title: 'Poids', tabBarIcon: icon('⚖️') }} />
           <Tabs.Screen name="entrainement" options={{ title: 'Muscu', tabBarIcon: icon('🏋️') }} />

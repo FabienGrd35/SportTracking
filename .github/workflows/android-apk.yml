@@ -40,6 +40,9 @@ jobs:
       - name: Tests
         run: npm test
 
+      - name: Vérification des types (toute l'appli)
+        run: npx tsc --noEmit
+
       - name: Générer le projet Android natif
         run: npx expo prebuild --platform android --clean
 

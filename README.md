@@ -7,6 +7,7 @@ Appli mobile (iOS / Android, Expo + React Native) qui croise **musculation (Hevy
 
 | Onglet | Contenu |
 | --- | --- |
+| **Coach** | Conversation avec Claude sur tes données : analyse complète des tendances, questions libres. |
 | **Tendances** | Poids lissé, rythme kg/semaine, dépense énergétique, macros du jour vs objectifs, et les analyses expliquées. |
 | **Nutrition** | Saisie des repas (protéines / glucides / lipides, calories calculées automatiquement), copie de la veille, historique 14 jours vs objectif. |
 | **Poids** | Import du CSV Renpho, saisie manuelle, courbe pesées + tendance lissée (1 mois / 3 mois / 1 an), % de gras. |
@@ -24,13 +25,25 @@ Appli mobile (iOS / Android, Expo + React Native) qui croise **musculation (Hevy
   (force stable en sèche = muscle préservé ; force en baisse + perte rapide = alerte).
 - **% de gras Renpho** : rappel des limites de l'impédancemétrie.
 
+## Claude
+
+L'onglet **Coach** envoie à Claude (modèle Claude Opus 5.5) un résumé de tes données : tout l'historique en moyennes
+hebdomadaires, les 28 derniers jours au détail, la force par exercice et les alertes calculées par l'appli
+(`src/lib/claudeContext.ts`). Les relances dans la même conversation relisent ce résumé depuis le cache.
+
+- **Clé API** : console.anthropic.com → API Keys, à coller dans Réglages. Facturée à l'usage, **séparément de
+  l'abonnement claude.ai** (ordre de grandeur : 0,10–0,30 $ par analyse complète ; le coût cumulé s'affiche dans l'onglet).
+- **Captures Renpho** : dans l'onglet Poids, Claude lit des captures de l'historique Renpho et en extrait dates et poids
+  (sortie JSON validée, aperçu avant import).
+- Repli automatique côté serveur (`fallbacks: "default"`) si une requête était refusée par les filtres de sécurité.
+
 ## Connexions
 
 | Source | Comment | Automatique ? |
 | --- | --- | --- |
 | **Hevy** | API officielle (`api.hevyapp.com/v1`), **abonnement Hevy Pro requis**. Clé : hevy.com → Settings → Developer → Réglages de l'appli. | Oui, à chaque ouverture |
 | **Renpho** | Pas d'API publique. Renpho écrit dans **Health Connect** (Android) → l'appli lit poids et % de gras. Import CSV en secours pour l'historique ancien. | Oui (Health Connect) |
-| **Macros / calories** | Lecture de ta **feuille Google Sheets** (export CSV). Colonnes reconnues : Date, Calories, Protéines, Glucides, Lipides ; une ligne par jour ou par repas. Saisie manuelle possible en complément. | Oui, à chaque ouverture |
+| **Macros / calories** | Import d'un **fichier Excel/CSV** depuis le téléphone, ou lecture de ta **feuille Google Sheets** (export CSV). Colonnes reconnues : Date, Calories, Protéines, Glucides, Lipides ; une ligne par jour ou par repas. Saisie manuelle possible en complément. | Oui, à chaque ouverture |
 
 Synchro auto : à l'ouverture et au retour au premier plan, au plus toutes les 15 min (`src/state/useAutoSync.ts`).
 

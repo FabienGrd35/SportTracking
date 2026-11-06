@@ -14,6 +14,9 @@ export type State = {
   /** Health Connect (Android) activé par l'utilisateur. */
   healthEnabled: boolean;
   healthLastSync: string | null;
+  /** Conversation avec le coach Claude. */
+  coachChat: { role: 'user' | 'assistant'; text: string; at: string }[];
+  claudeSpentUsd: number;
 };
 
 export const defaultProfile: Profile = {
@@ -35,6 +38,8 @@ const initial: State = {
   sheetLastSync: null,
   healthEnabled: false,
   healthLastSync: null,
+  coachChat: [],
+  claudeSpentUsd: 0,
 };
 
 type Action =
@@ -49,6 +54,8 @@ type Action =
   | { type: 'setSheetUrl'; url: string | null }
   | { type: 'healthSync'; entries: WeightEntry[]; at: string }
   | { type: 'setHealthEnabled'; enabled: boolean }
+  | { type: 'coachTurn'; role: 'user' | 'assistant'; text: string; costUsd?: number }
+  | { type: 'coachClear' }
   | { type: 'reset' };
 
 const wKey = (w: WeightEntry) => `${w.date}|${w.source}`;
@@ -87,7 +94,7 @@ function reducer(s: State, a: Action): State {
       const sheet: FoodEntry[] = a.days.map((d) => ({
         id: `sheet-${d.date}`,
         date: d.date,
-        label: 'Google Sheets',
+        label: 'Historique importé',
         kcal: Math.round(d.kcal),
         proteinG: Math.round(d.proteinG),
         carbsG: Math.round(d.carbsG),
@@ -104,6 +111,14 @@ function reducer(s: State, a: Action): State {
     }
     case 'setHealthEnabled':
       return { ...s, healthEnabled: a.enabled };
+    case 'coachTurn':
+      return {
+        ...s,
+        coachChat: [...s.coachChat, { role: a.role, text: a.text, at: new Date().toISOString() }],
+        claudeSpentUsd: s.claudeSpentUsd + (a.costUsd ?? 0),
+      };
+    case 'coachClear':
+      return { ...s, coachChat: [] };
     case 'reset':
       return initial;
   }

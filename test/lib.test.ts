@@ -236,3 +236,50 @@ test('jour qui dérape : le samedi seul est détecté', () => {
   const a = analyze(profile, [], f, [], END);
   assert.match(a.insights.find((i) => i.id === 'weekday')!.title, /samedi/);
 });
+
+import { buildDataContext } from '../src/lib/claudeContext.ts';
+import { excelSerialToISO, rowsToCsv } from '../src/lib/xlsxRows.ts';
+import { parseWeightExtraction } from '../src/lib/weightExtraction.ts';
+
+test('Excel : numéro de série → date', () => {
+  assert.equal(excelSerialToISO(45608), '2024-11-12');
+  assert.equal(excelSerialToISO(46331), '2026-11-05');
+});
+
+test('Excel → CSV → lecteur nutrition (structure réelle Date/Cal/Prot/Gluc/Lip)', () => {
+  const rows: unknown[][] = [
+    ['Date', 'Cal', 'Prot', 'Gluc', 'Lip'],
+    [45570],
+    [45608, '1 807', 92, 221, 59],
+    [45609, '2 014', 146, 144, 95],
+  ];
+  const r = parseNutritionSheet(rowsToCsv(rows));
+  assert.deepEqual(r.days, [
+    { date: '2024-11-12', kcal: 1807, proteinG: 92, carbsG: 221, fatG: 59 },
+    { date: '2024-11-13', kcal: 2014, proteinG: 146, carbsG: 144, fatG: 95 },
+  ]);
+});
+
+test('pesées lues par Claude : valeurs invraisemblables ou futures écartées', () => {
+  const r = parseWeightExtraction(JSON.stringify({
+    measurements: [
+      { date: '2026-11-04', weight_kg: 82.35, body_fat_pct: 18.2, muscle_mass_kg: 63.1 },
+      { date: '2026-11-09', weight_kg: 82, body_fat_pct: null, muscle_mass_kg: null },
+      { date: '04/11', weight_kg: 82, body_fat_pct: null, muscle_mass_kg: null },
+      { date: '2026-11-03', weight_kg: 8.2, body_fat_pct: null, muscle_mass_kg: null },
+    ],
+    notes: '',
+  }), '2026-11-06');
+  assert.equal(r.rejected, 3);
+  assert.deepEqual(r.entries, [{ date: '2026-11-04', weightKg: 82.35, bodyFatPct: 18.2, muscleMassKg: 63.1, source: 'renpho' }]);
+});
+
+test('contexte Claude : historique hebdo, détail 28 j, données absentes signalées', () => {
+  const f = foods(56, 2400, 150);
+  const a = analyze(profile, [], f, [], END);
+  const ctx = buildDataContext(profile, [], f, [], a, END);
+  assert.match(ctx, /# Historique hebdomadaire/);
+  assert.match(ctx, /# 28 derniers jours/);
+  assert.match(ctx, /poids, entraînements Hevy : non disponibles/);
+  assert.ok(ctx.split('\n').filter((l) => /^\d{4}-\d{2}-\d{2};7;/.test(l)).length >= 6);
+});
