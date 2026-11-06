@@ -10,6 +10,7 @@
       "expo-router",
       "expo-secure-store",
       "expo-health-connect",
+      "./plugins/withHealthConnectDelegate.js",
       [
         "expo-build-properties",
         {
